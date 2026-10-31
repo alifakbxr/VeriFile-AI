@@ -5,7 +5,7 @@ import struct
 import zlib
 from zipfile import ZipFile
 
-import fitz
+import pymupdf as fitz
 from PIL import Image, PngImagePlugin
 
 from verifile.forensics import analyze_bytes, analyze_file

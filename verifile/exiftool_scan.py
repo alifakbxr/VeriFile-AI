@@ -20,7 +20,7 @@ def get_exiftool_version(binary: str) -> str | None:
                                    timeout=5, check=False)  # nosec B603
         if completed.returncode == 0:
             return completed.stdout.strip()
-    except Exception:
+    except (subprocess.TimeoutExpired, OSError, ValueError):
         pass
     return None
 

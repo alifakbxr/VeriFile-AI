@@ -36,7 +36,7 @@ def _cleanup_old_reports(max_age_seconds: int = 1800, max_files: int = 50) -> No
                         files.remove(f)
                 except OSError:
                     pass
-    except Exception:
+    except (OSError, ValueError):
         pass
 
 
@@ -56,7 +56,7 @@ def analyze_ui(path, reference_path, use_gemma, use_exiftool):
             recapture_view = inspect_screen_recapture(pages[0])[1]
         if reference_path and pages and report['forensics']['reference_comparison']['status'] == 'completed':
             with Image.open(reference_path) as original:
-                reference_view = compare_with_reference(pages[0], original)[1]
+                reference_view = compare_with_reference(pages[0], original, allow_rescale=True)[1]
         if use_gemma:
             try:
                 # Original full view + up to 2 focused amount crops within the model's 3-image cap.

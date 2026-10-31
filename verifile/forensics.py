@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 import defusedxml.ElementTree as ET
 
-import fitz
+import pymupdf as fitz
 import numpy as np
 from PIL import ExifTags, Image, ImageChops, ImageEnhance, ImageOps, UnidentifiedImageError
 
@@ -388,7 +388,7 @@ def analyze_bytes(data: bytes, filename: str = 'upload', *, reference_bytes: byt
             if kind not in {'jpeg', 'png', 'webp'} or ref_kind not in {'jpeg', 'png', 'webp'}:
                 ref_comparison = {'status': 'unsupported', 'detail': 'Perbandingan hanya untuk dua file gambar.'}
             else:
-                ref_comparison, _ = compare_with_reference(views[0], _load_image(reference_bytes))
+                ref_comparison, _ = compare_with_reference(views[0], _load_image(reference_bytes), allow_rescale=True)
                 if ref_comparison['status'] == 'completed' and ref_comparison['changed_regions']:
                     findings.append(_finding('reference_pixel_differences', 'Perbedaan terhadap referensi transaksi yang sama',
                                              f'{len(ref_comparison["changed_regions"])} area berbeda dari referensi; '

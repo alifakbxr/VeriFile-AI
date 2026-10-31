@@ -1,7 +1,7 @@
 """Purely fictional local fixtures; no bank trademarks, genuine transactions or PII."""
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 from PIL import Image, ImageDraw, ImageFont
 
 OUT = Path(__file__).parent

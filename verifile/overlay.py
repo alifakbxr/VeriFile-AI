@@ -164,16 +164,32 @@ def inspect_amount_overlay(image: Image.Image, ocr_lines: list[dict] | None = No
     return result, preview, crops
 
 
-def compare_with_reference(target: Image.Image, genuine_reference: Image.Image) -> tuple[dict, Image.Image | None]:
-    """Pixel-level comparison ONLY for same-resolution, *same-transaction* original.
+def compare_with_reference(target: Image.Image, genuine_reference: Image.Image,
+                           *, allow_rescale: bool = False) -> tuple[dict, Image.Image | None]:
+    """Pixel-level comparison for same-transaction original.
 
-    Not for comparing different transfers, unrelated bank templates or resized images.
+    If allow_rescale is True and aspect ratios are compatible (within 3% tolerance),
+    normalizes reference resolution to target using Lanczos resampling.
     """
-    a = np.asarray(target.convert('RGB'))
-    b = np.asarray(genuine_reference.convert('RGB'))
-    if a.shape != b.shape:
-        return {'status': 'incompatible_dimensions',
-                'detail': 'Referensi harus file asli dengan resolusi identik sebelum nominal diedit.'}, None
+    target_rgb = target.convert('RGB')
+    ref_rgb = genuine_reference.convert('RGB')
+    comparison_type = 'exact_same_resolution_original'
+
+    if target_rgb.size != ref_rgb.size:
+        w_t, h_t = target_rgb.size
+        w_r, h_r = ref_rgb.size
+        aspect_t = w_t / max(1, h_t)
+        aspect_r = w_r / max(1, h_r)
+        aspect_diff = abs(aspect_t - aspect_r) / max(0.001, aspect_r)
+        if allow_rescale and aspect_diff <= 0.03:
+            ref_rgb = ref_rgb.resize((w_t, h_t), Image.Resampling.LANCZOS)
+            comparison_type = 'aspect_aligned_rescaled_original'
+        else:
+            return {'status': 'incompatible_dimensions',
+                    'detail': f'Referensi harus file asli dengan resolusi identik atau rasio aspek sama (target: {w_t}x{h_t}, referensi: {w_r}x{h_r}).'}, None
+
+    a = np.asarray(target_rgb)
+    b = np.asarray(ref_rgb)
     h, w = a.shape[:2]
     if h*w > 24_000_000:
         return {'status':'too_many_pixels'}, None
@@ -197,7 +213,7 @@ def compare_with_reference(target: Image.Image, genuine_reference: Image.Image) 
         drawn.rectangle(r['bbox'], outline=(255,30,30), width=max(2,w//350))
     ratio = round(float((mask>0).mean()),6)
     return {'status':'completed', 'changed_pixel_fraction':ratio, 'changed_regions':regions[:20],
-            'comparison_type': 'exact_same_resolution_original',
+            'comparison_type': comparison_type,
             'interpretation': 'Perbedaan piksel terhadap referensi terdeteksi, BUKAN otomatis bukti fraud. '
                               'Resave, kompresi, warna atau perubahan lain juga dapat menyebabkan perbedaan; '
                               'referensi wajib berasal dari file bukti transaksi yang sama.'}, base

@@ -1,7 +1,7 @@
 import io
 from zipfile import ZipFile
 
-import fitz
+import pymupdf as fitz
 import pytest
 from PIL import Image
 
