@@ -155,6 +155,7 @@ def inspect_amount_overlay(image: Image.Image, ocr_lines: list[dict] | None = No
                       'ocr_confidence': round(row['confidence'], 3), 'texture_diagnostic': _roi_metrics(arr,b)})
     result = {'status': status, 'approach': 'rapidocr_amount_roi_plus_opencv_diagnostic',
               'ocr_lines_count': len(rows), 'amount_candidates': items,
+              'all_ocr_lines': rows,
               'pixels_reviewed': [w,h],
               'interpretation': 'Heatmap bukan peta kemungkinan palsu. Ini hanya memperjelas tekstur/tepi piksel. '
                                 'Gambar yang ditimpa nominal dan disimpan ulang bisa tidak meninggalkan jejak yang dapat dipastikan.',

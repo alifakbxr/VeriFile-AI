@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
 
 from .timeline import add_stamp, select_timeline

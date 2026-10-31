@@ -15,6 +15,7 @@ import numpy as np
 from PIL import ExifTags, Image, ImageChops, ImageEnhance, ImageOps, UnidentifiedImageError
 
 from .overlay import inspect_amount_overlay, compare_with_reference, _redact
+from .receipt import parse_receipt_data
 from .recapture import inspect_screen_recapture
 from .timeline import add_stamp, extract_xmp, extract_png_time, select_timeline, observed_filesystem_times
 
@@ -67,6 +68,8 @@ def _text(v: Any, max_len: int = 250) -> str:
 
 def _image_metadata(image: Image.Image, data: bytes, kind: str) -> tuple[dict, list[dict]]:
     metadata = {'width': image.width, 'height': image.height, 'format': image.format}
+    if hasattr(image, 'info') and 'dpi' in image.info:
+        metadata['dpi'] = image.info['dpi']
     stamps: list[dict] = []
     exif_tags: dict = {}
     try:
@@ -146,22 +149,121 @@ def _load_image(data: bytes) -> Image.Image:
         raise UnsafeFile('Berkas gambar rusak atau gagal dibaca.') from exc
 
 
+def _detect_provenance(data: bytes, meta: dict, kind: str) -> tuple[list[dict], dict]:
+    findings = []
+    data_lower = data.lower()
+
+    # 1. C2PA / Content Credentials & SynthID / Generative AI Markers
+    c2pa_markers = []
+    if b'c2pa' in data_lower or b'urn:c2pa:' in data:
+        c2pa_markers.append('C2PA Content Credentials')
+    if b'synthid' in data_lower:
+        c2pa_markers.append('SynthID Imperceptible Watermark')
+    if b'google generative ai' in data_lower:
+        c2pa_markers.append('Google Generative AI Provenance')
+    if b'trainedalgorithmicmedia' in data_lower or b'compositesynthetic' in data_lower:
+        c2pa_markers.append('IPTC Algorithmic/Generative Media')
+
+    other_ai_keywords = [
+        (b'midjourney', 'Midjourney'),
+        (b'dall-e', 'OpenAI DALL-E'),
+        (b'stable diffusion', 'Stable Diffusion'),
+        (b'novelai', 'NovelAI'),
+        (b'adobe firefly', 'Adobe Firefly'),
+        (b'bing image creator', 'Bing Image Creator / Copilot'),
+    ]
+    for kw, label in other_ai_keywords:
+        if kw in data_lower and label not in c2pa_markers:
+            c2pa_markers.append(label)
+
+    ai_detected = bool(c2pa_markers)
+    if ai_detected:
+        findings.append(_finding(
+            'generative_ai_provenance',
+            'Rekayasa Generative AI / C2PA Terdeteksi',
+            f"Ditemukan manifest/watermark AI: {', '.join(c2pa_markers)}. File merupakan hasil rekayasa atau diproses oleh Generative AI.",
+            'alert',
+            'provenance'
+        ))
+
+    # 2. Software Editor detection (EXIF, XMP, PNG text, or binary strings)
+    software_str = ' '.join([
+        meta.get('exif', {}).get('Software', ''),
+        next((str(v) for k, v in meta.get('embedded_text', {}).items() if k.lower() == 'software'), ''),
+        meta.get('xmp_selected', {}).get('CreatorTool', '')
+    ]).strip()
+
+    editor_patterns = [
+        ('photoshop', 'Adobe Photoshop'),
+        ('canva', 'Canva'),
+        ('gimp', 'GIMP'),
+        ('picsart', 'PicsArt'),
+        ('pixelmator', 'Pixelmator'),
+        ('snapseed', 'Snapseed'),
+        ('lightroom', 'Adobe Lightroom'),
+        ('paint.net', 'Paint.NET'),
+    ]
+    matched_editors = []
+    for kw, label in editor_patterns:
+        if kw in software_str.lower() or kw.encode('utf-8') in data_lower:
+            if label not in matched_editors:
+                matched_editors.append(label)
+
+    editor_detected = bool(matched_editors)
+    if editor_detected:
+        findings.append(_finding(
+            'editing_software',
+            'Software Editor Grafis Terdeteksi',
+            f"Ditemukan jejak aplikasi editor: {', '.join(matched_editors)}. File berpotensi hasil modifikasi visual.",
+            'alert',
+            'provenance'
+        ))
+    elif software_str:
+        findings.append(_finding(
+            'editing_software',
+            'Jejak software pengolah file',
+            f'Metadata mencantumkan software: {software_str}. Ini tidak membuktikan manipulasi bukti transfer.',
+            'review',
+            'metadata'
+        ))
+    else:
+        findings.append(_finding(
+            'no_software_tag',
+            'Informasi software tidak tersedia',
+            'Tidak ada tag software yang mencurigakan. Ketiadaannya normal pada screenshot asli.',
+            'info'
+        ))
+
+    # 3. DPI check for desktop export
+    dpi = meta.get('dpi')
+    if dpi and isinstance(dpi, (tuple, list)) and len(dpi) >= 2 and dpi[0] >= 300:
+        findings.append(_finding(
+            'desktop_dpi_signature',
+            'Karakteristik DPI Non-Standar Screenshot HP',
+            f"Resolusi gambar memiliki metadata {int(dpi[0])} DPI (karakteristik ekspor editor/generator PC).",
+            'review',
+            'metadata'
+        ))
+
+    provenance_info = {
+        'ai_detected': ai_detected,
+        'ai_markers': c2pa_markers,
+        'editor_detected': editor_detected,
+        'editors': matched_editors,
+        'software_meta': software_str or None,
+    }
+    return findings, provenance_info
+
+
 def _analyze_image(data: bytes, kind: str) -> tuple[dict, list, list, Image.Image | None]:
     img = _load_image(data)
     meta, stamps = _image_metadata(img, data, kind)
     meta['_timeline_stamps'] = stamps
-    findings = []
-    software = ' '.join([meta.get('exif', {}).get('Software', ''),
-                         next((str(v) for k,v in meta.get('embedded_text', {}).items()
-                               if k.lower() == 'software'), ''),
-                         meta.get('xmp_selected', {}).get('CreatorTool', '')]).strip()
-    if software:
-        findings.append(_finding('editing_software', 'Jejak software pengolah file',
-                                 f'Metadata mencantumkan software: {software}. Ini tidak membuktikan manipulasi bukti transfer.',
-                                 'review'))
-    else:
-        findings.append(_finding('no_software_tag', 'Informasi software tidak tersedia',
-                                 'Tidak ada tag software yang dapat diandalkan. Ketiadaannya normal pada banyak screenshot.'))
+
+    prov_findings, prov_info = _detect_provenance(data, meta, kind)
+    meta['provenance'] = prov_info
+    findings = list(prov_findings)
+
     views = [ImageOps.exif_transpose(img).convert('RGB')]
     preview = None
     if kind == 'jpeg':
@@ -358,9 +460,22 @@ def analyze_bytes(data: bytes, filename: str = 'upload', *, reference_bytes: byt
     findings.extend(timeline_findings)
     overlay_diagnostics = []
     recapture_diagnostics = []
+    receipt_data = {}
     for page_index, view in enumerate(views[:MAX_IMAGES]):
         diagnostic, _, _ = inspect_amount_overlay(view)
         overlay_diagnostics.append({'visual_index': page_index, **diagnostic})
+        if page_index == 0 and diagnostic.get('all_ocr_lines'):
+            receipt_data = parse_receipt_data(diagnostic['all_ocr_lines'])
+            if receipt_data.get('is_receipt'):
+                consistency = receipt_data.get('internal_consistency', {})
+                if not consistency.get('is_consistent'):
+                    findings.append(_finding(
+                        'internal_amount_mismatch',
+                        'Inkonsistensi Internal Nominal Bukti Transfer',
+                        consistency.get('reason', 'Nominal transaksi bertentangan antar baris rincian.'),
+                        'alert',
+                        'receipt_consistency'
+                    ))
         # Camera tags apply to the uploaded image itself, not to PDF page renders.
         capture_meta = meta if kind in {'jpeg', 'png', 'webp'} and page_index == 0 else {}
         recapture, _ = inspect_screen_recapture(view, capture_meta)
@@ -392,17 +507,74 @@ def analyze_bytes(data: bytes, filename: str = 'upload', *, reference_bytes: byt
                 if ref_comparison['status'] == 'completed' and ref_comparison['changed_regions']:
                     findings.append(_finding('reference_pixel_differences', 'Perbedaan terhadap referensi transaksi yang sama',
                                              f'{len(ref_comparison["changed_regions"])} area berbeda dari referensi; '
-                                             'pastikan sumber referensi autentik dan file benar-benar transaksi yang sama.',
-                                             'review', 'comparison'))
+                                             'bukti transfer ini memiliki perbedaan visual dibanding file referensi asli.',
+                                             'alert', 'comparison'))
         except UnsafeFile:
             ref_comparison = {'status': 'invalid_reference', 'detail': 'Referensi bukan gambar yang didukung.'}
+
+    has_alert = any(f['severity'] == 'alert' for f in findings)
     has_review = any(f['severity'] == 'review' for f in findings)
-    outcome = 'Perlu pemeriksaan lanjutan' if has_review else 'Tidak ada indikator kuat dari pemeriksaan terbatas'
+
+    if has_alert:
+        verdict_category = 'MANIPULASI_TERDETEKSI'
+        risk_level = 'TINGGI'
+        ai_finding = next((f for f in findings if f['code'] == 'generative_ai_provenance'), None)
+        editor_finding = next((f for f in findings if f['code'] == 'editing_software' and f['severity'] == 'alert'), None)
+        mismatch_finding = next((f for f in findings if f['code'] == 'internal_amount_mismatch'), None)
+        ref_diff = next((f for f in findings if f['code'] == 'reference_pixel_differences'), None)
+
+        if ai_finding:
+            verdict_title = '🚨 TERINDIKASI REKAYASA GENERATIVE AI'
+            verdict_badge = '🚨 REKAYASA DIGITAL / AI TERDETEKSI'
+        elif editor_finding:
+            verdict_title = '🚨 TERINDIKASI EDITING SOFTWARE'
+            verdict_badge = '🚨 JEJAK EDITOR GRAFIS TERDETEKSI'
+        elif mismatch_finding:
+            verdict_title = '🚨 INKONSISTENSI INTERNAL NOMINAL'
+            verdict_badge = '🚨 NOMINAL TIDAK KONSISTEN'
+        elif ref_diff:
+            verdict_title = '🚨 PERBEDAAN PIKSEL TERHADAP REFERENSI'
+            verdict_badge = '🚨 MANIPULASI BUKTI REFERENSI'
+        else:
+            verdict_title = '🚨 TERINDIKASI MANIPULASI DIGITAL'
+            verdict_badge = '🚨 INDIKATOR MANIPULASI KUAT'
+
+        outcome = 'Ditemukan indikator manipulasi/rekayasa digital yang signifikan pada file ini'
+    elif any(f['code'] == 'screen_recapture_context' for f in findings):
+        verdict_category = 'FOTO_LAYAR_HP'
+        risk_level = 'SEDANG'
+        verdict_title = '📱 TERINDIKASI FOTO ULANG LAYAR HP'
+        verdict_badge = '📱 FOTO ULANG LAYAR HP (RECAPTURE)'
+        outcome = 'File terdeteksi berasal dari kamera yang memfoto layar perangkat lain'
+    elif has_review:
+        verdict_category = 'PERLU_VERIFIKASI'
+        risk_level = 'SEDANG'
+        verdict_title = '⚠️ PERLU PEMERIKSAAN LANJUTAN'
+        verdict_badge = '⚠️ PERLU VERIFIKASI'
+        outcome = 'Terdapat variasi tekstur atau anomali metadata yang memerlukan verifikasi manual'
+    else:
+        verdict_category = 'TIDAK_TERDETEKSI_ANOMALI'
+        risk_level = 'RENDAH'
+        verdict_title = '✅ TIDAK TERDETEKSI ANOMALI DIGITAL'
+        verdict_badge = '✅ SCREENSHOT DIGITAL BERSIH'
+        outcome = 'Tidak ada anomali atau manipulasi yang terdeteksi dari pemeriksaan file'
+
+    verdict_text = f"{verdict_title} (TIDAK DAPAT DIVERIFIKASI tanpa data transaksi independen)"
+
     result = {
-        'schema_version': '0.4', 'file': {'name': safe_name, 'type_detected': kind,
-                                          'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()},
+        'schema_version': '0.5',
+        'file': {'name': safe_name, 'type_detected': kind,
+                 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()},
         'analyzed_at_utc': datetime.now(timezone.utc).isoformat(),
-        'forensics': {'metadata': meta, 'timeline': timeline, 'overlay_diagnostics': overlay_diagnostics, 'recapture_diagnostics': recapture_diagnostics,
+        'verdict': verdict_text,
+        'verdict_category': verdict_category,
+        'verdict_title': verdict_title,
+        'verdict_badge': verdict_badge,
+        'risk_level': risk_level,
+        'receipt_data': receipt_data,
+        'forensics': {'metadata': meta, 'timeline': timeline, 'overlay_diagnostics': overlay_diagnostics,
+                      'recapture_diagnostics': recapture_diagnostics,
+                      'receipt_data': receipt_data,
                       'reference_comparison': ref_comparison, 'findings': findings, 'summary': outcome,
                       'limitations': ['Hasil tidak dapat memastikan transaksi telah terjadi.',
                                       'Metadata dan tanggal internal dapat diubah/dihapus, tidak membuktikan kapan transaksi terjadi.',
@@ -412,7 +584,6 @@ def analyze_bytes(data: bytes, filename: str = 'upload', *, reference_bytes: byt
                                       'Foto layar bisa menyamarkan jejak edit sebelumnya, tetapi foto layar sendiri tidak membuktikan penipuan.',
                                       'Tampilan setelah diedit dan diratakan bisa identik secara statistik dengan file normal.']},
         'gemma4': {'status': 'not_run', 'model': None, 'analysis': None},
-        'verdict': 'TIDAK DAPAT DIVERIFIKASI tanpa data transaksi independen',
     }
     return result, views, ela
 

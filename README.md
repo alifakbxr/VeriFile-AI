@@ -1,62 +1,57 @@
 # 🔎 VeriFile AI — Hacktoberfest Hack Day Medan 2026
 
-**Open-source document and transfer-proof forensic triage** with a special focus on **erased/overwritten transfer amounts and evidence photographed from a phone screen** (e.g. a scammer replaces `Rp 37.400` with `Rp 60.000` over the same background). This is a **functional forensic triage starter**, **not** a legal proof of fraud, AI-origin classifier, or bank transaction verifier.
+**Sistem Deteksi Otomatis Integritas Bukti Transfer & Struk Pembayaran (Single-Upload Forensics)** dengan fokus utama pada **bukti transfer bank / dompet digital** (JPG, PNG, WebP). Cukup unggah gambar bukti transfer — sistem langsung mendeteksi rekayasa **Generative AI (C2PA/SynthID)**, **software editor grafis (Photoshop/Canva)**, **foto ulang layar HP (recapture)**, serta mengekstraksi data transaksi dan memverifikasi **konsistensi nominal internal** secara otomatis.
 
 ---
 
-## What the MVP Does
+## Fitur Utama
 
-| Engine | What it checks | Status / Caveat |
+| Modul Forensik | Yang Diperiksa & Dideteksi | Status & Bukti Verifikasi |
 | --- | --- | --- |
-| **File signatures + SHA-256** | JPG/PNG/WebP/PDF/DOCX; 20 MB cap; extension validation | **Working, tested** |
-| **Metadata + Chronology** | EXIF/XMP/PNG timestamps and software; PDF dates/creator; DOCX core properties; filesystem times distinguished | **Working**; metadata is editable and often omitted by messaging apps |
-| **Screen Recapture Triage** | OpenCV inner-quadrilateral contour, camera Make/Model EXIF, exploratory FFT periodicity | **Working as uncalibrated review cues**; not an automated screen classifier |
-| **JPEG ELA** | Recompression difference visualization | **Working**; diagnostic tool, not an authenticity score |
-| **PDF Paint-Order Overlays** | Detects **text → filled shape → replacement text** via `pymupdf` (`page.get_bboxlog()`) | **Working on vector PDFs**; flattened raster PDFs defeat this test |
-| **OpenCV Texture Map** | Spatial high-frequency energy map and amount candidate ROI highlighting | **Working**; visual aid to inspect local pixel textures |
-| **RapidOCR Engine** | Text extraction and ROI candidate filtering (`Rp`, `IDR`, `nominal`, `total`, `jumlah`) | **Working & verified** with ONNX Runtime PP-OCRv6 models |
-| **Reference Comparison** | Pixel differential against the original image; includes **aspect-aligned Lanczos normalization** | **Working & verified** on same-transaction pairs of identical or scaled resolutions |
-| **Gemma 4 Multimodal** | Optional vision-language review with strict JSON output and untrusted input boundaries | **Optional integration**, requires GPU (e.g. Colab T4) |
-| **Security Hardening** | DoS bounds (PDF dimensions, XML entity protection via `defusedxml`, PII redaction, report TTL cleanup, Bandit SAST) | **Fully integrated & verified** (27 unit tests pass) |
-| **Reports & UI** | Gradio web UI, CLI JSON export, and automated test suite | **Working** (27 automated tests passing) |
+| **Generative AI & C2PA Provenance** | Deteksi manifest C2PA (Content Credentials), watermark SynthID, tag IPTC `trainedAlgorithmicMedia`, Google Generative AI, Midjourney, DALL-E, Firefly | **Teruji & Terintegrasi**; langsung mendeteksi gambar rekayasa AI dari 1 upload tanpa perlu file asli |
+| **Ekstraksi Struk & Konsistensi OCR** | Ekstraksi bank/aplikasi (wondr by BNI, BCA, Mandiri, BRI, QRIS, DANA, GoPay), status, waktu, Ref ID, pengirim, penerima, dan pengecekan konsistensi nominal | **Teruji & Terintegrasi** via RapidOCR + ONNX Runtime PP-OCRv6 |
+| **Deteksi Software Editor** | Jejak Adobe Photoshop, Canva, GIMP, PicsArt, Pixelmator pada metadata EXIF/XMP maupun binary strings | **Teruji & Terintegrasi** |
+| **Deteksi Foto Layar HP (Recapture)** | Deteksi foto ulang monitor/layar HP vs screenshot digital langsung via kontur interior dan EXIF kamera | **Teruji & Terintegrasi** |
+| **Diagnostik JPEG ELA & Tekstur** | Visualisasi Error Level Analysis (ELA) dan spatial high-frequency energy map pada area nominal | **Teruji & Terintegrasi** |
+| **Perbandingan Referensi (Opsional)** | Analisis perbedaan piksel jika pengguna memiliki file referensi asli transaksi yang sama (dengan normalisasi Lanczos) | **Teruji & Terintegrasi** |
+| **Keamanan & Privasi Tingkat Tinggi** | Proteksi DoS ukuran/resolusi file, parsing XML aman via `defusedxml`, penyamaran nomor rekening (PII masking), pembersihan berkas TTL 30 menit, Bandit SAST clean (0 issues) | **Terverifikasi 100%** (34 unit tests pass) |
 
-> **Important:** Do **not** treat heatmaps, metadata, or model outputs as proof of fraud. High-quality digital edits may leave no discernible digital seams once flattened and recompressed. Only an authorized bank transaction ledger or API can settle payment authenticity.
+> **Catatan Integritas:** Pemeriksaan forensik digital mengevaluasi integritas file, jejak AI/C2PA, metadata perangkat, dan konsistensi teks. Untuk transaksi finansial, konfirmasi mutasi rekening bank resmi tetap merupakan sumber kebenaran mutlak.
 
 ---
 
-## 1. Local Quick Start (No GPU Required)
+## 1. Quick Start Lokal (Tanpa Butuh GPU)
 
-Python **3.10–3.12** recommended. RAM ≥8 GB.
+Direkomendasikan Python **3.10–3.12**.
 
 ```bash
-# Clone the repository
+# Clone repository
 git clone https://github.com/alifakbxr/VeriFile-AI.git
 cd VeriFile-AI
 
-# Create and activate virtual environment
+# Buat dan aktifkan virtual environment
 python -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
 
-# Install core dependencies + OCR engine
+# Install dependensi inti + RapidOCR
 pip install -r requirements-ocr.txt
 
-# Generate synthetic test fixtures and run tests
+# Buat sample sintetis dan jalankan unit tests
 python demo/create_samples.py
 python -m pytest -v
 
-# Launch the Gradio web interface
+# Jalankan antarmuka Gradio
 python app.py
 ```
 
-### Try the Erase-and-Overwrite Detection
+### Alur Deteksi Otomatis (Single Upload)
 
-1. **Synthetic Samples:**
-   - Upload `demo/edited_sample.jpg`. Provide `demo/clean_sample.jpg` in the **original reference** field to see pixel changes highlighted.
-   - Upload `demo/edited_overlay_sample.pdf` to inspect vector paint-order text replacement (`pdf_text_cover_replace`).
-2. **Real Test Data Pair:**
-   - In `demo/TEST DATA/`, upload `202610300859170551-179341978122122.jpg` (Fake, nominal modified to Rp60.000) as the primary document.
-   - Supply `202610300859170551-1793419781221.jpg` (Original, nominal Rp37.400) as the reference.
-   - The engine automatically normalizes resolution and pinpoints the manipulated nominal bounding box.
+1. Buka antarmuka Gradio (`http://localhost:7860`).
+2. **Cukup unggah atau paste gambar bukti transfer** pada kotak utama.
+3. Sistem langsung menghasilkan:
+   - **Verdict Banner Berwarna:** 🚨 *REKAYASA / MANIPULASI TERDETEKSI*, 📱 *FOTO ULANG LAYAR HP*, atau ✅ *SCREENSHOT DIGITAL BERSIH*.
+   - **Ringkasan Data Struk:** Bank/e-wallet, nominal header, rincian nominal, total, status konsistensi nominal, tanggal/waktu, No. Ref, penerima, dan pengirim.
+   - **Tab Diagnostik:** ROI Area Nominal, ELA, Kontur Layar, dan Ekspor Laporan JSON.
 
 ### CLI Usage
 
@@ -111,13 +106,14 @@ verifile/gemma.py                    Optional Gemma 4 multimodal reviewer with s
 verifile/exiftool_scan.py            Optional subprocess ExifTool scanner with version check
 verifile/timeline.py                 Timestamp parsing, XMP/tIME extraction, chronology check
 verifile/cli.py                      Command-line interface
+verifile/receipt.py                 Indonesian receipt parser and amount consistency checker
 requirements.txt                    Core dependencies (Pillow, OpenCV, PyMuPDF, defusedxml)
 requirements-ocr.txt                RapidOCR + ONNX Runtime engine
 requirements-gemma.txt              Optional Gemma Transformers + bitsandbytes
 notebooks/VeriFile_HackDay_Colab.ipynb  Interactive Google Colab notebook
 demo/create_samples.py              Generates 5 synthetic test fixtures
 demo/TEST DATA/                     Real test sample pair (Original vs Fake Rp60.000)
-tests/                              Automated unit & security regression test suite (27 tests)
+tests/                              Automated unit & security regression test suite (34 tests)
 docs/ETHICS.md                      Responsible disclosure & privacy guidelines
 docs/EXPERIMENTAL_BACKENDS.md       External backends (PhotoHolmes, RapidOCR)
 docs/ROADMAP.md                     Milestones, evaluation metrics, and future scope

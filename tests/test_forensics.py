@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 from zipfile import ZipFile
 
 import pymupdf as fitz
@@ -104,3 +105,33 @@ def test_docx_pii_account_masked():
     preview = report['forensics']['metadata']['text_preview']
     assert '555123456789' not in preview
     assert '********6789' in preview
+
+
+def test_generative_ai_c2pa_detected():
+    # Synthetic JPEG with C2PA manifest marker
+    buf = io.BytesIO()
+    img = Image.new('RGB', (100, 100), color='#ffffff')
+    img.save(buf, format='JPEG')
+    raw = buf.getvalue() + b' urn:c2pa:test-manifest Google Generative AI SynthID '
+    report, _, _ = analyze_bytes(raw, 'synthetic_ai.jpg')
+    assert report['verdict_category'] == 'MANIPULASI_TERDETEKSI'
+    assert report['risk_level'] == 'TINGGI'
+    assert any(f['code'] == 'generative_ai_provenance' for f in report['forensics']['findings'])
+
+
+def test_demo_receipt_files_if_present():
+    orig_path = Path('demo/TEST DATA/202610300859170551-1793419781221.jpg')
+    fake_path = Path('demo/TEST DATA/202610300859170551-179341978122122.jpg')
+    if orig_path.exists() and fake_path.exists():
+        from verifile.forensics import analyze_file
+        orig_res, _, _ = analyze_file(orig_path)
+        fake_res, _, _ = analyze_file(fake_path)
+
+        assert orig_res['verdict_category'] == 'TIDAK_TERDETEKSI_ANOMALI'
+        assert orig_res['risk_level'] == 'RENDAH'
+        assert orig_res['receipt_data']['bank'] == 'wondr by BNI'
+
+        assert fake_res['verdict_category'] == 'MANIPULASI_TERDETEKSI'
+        assert fake_res['risk_level'] == 'TINGGI'
+        assert 'REKAYASA' in fake_res['verdict_title']
+
