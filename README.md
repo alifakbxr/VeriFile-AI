@@ -78,6 +78,12 @@ For optional **Gemma 4 multimodal**:
 4. In the notebook's Gemma cell, set `ENABLE_GEMMA = True` and run it before starting the UI. The model will be loaded on first request when you check **Gemma 4** in Gradio.
 5. The notebook selects 4-bit CUDA quantization by default. This is an experimental optimization, not a guarantee for every Colab/runtime version.
 
+For optional **Gemini API fallback** (when Colab GPU is unavailable or local Gemma fails):
+
+1. Create a Gemini API key in Google AI Studio and save it under Colab **Secrets → `GEMINI_API_KEY`** (or in a local `.env` file copied from `.env.example`).
+2. Run Step 3 in `notebooks/VeriFile_HackDay_Colab.ipynb` (or locally `pip install -r requirements-gemini.txt`, though stdlib HTTPS also works without extra packages).
+3. When the AI checkbox is enabled in Gradio, `verifile/gemma.py` tries local Gemma 4 first and automatically falls back to `gemini-2.5-flash` (`status: "completed_gemini_fallback"`), sending the redacted JSON summary and images over HTTPS to Google's Gemini API. Set `GEMINI_ONLY=1` to skip local Gemma entirely.
+
 **Disk requirement:** Standard Gemma 4 E2B weight files may exceed 10 GB, *plus* cache/dependencies. The 5–10 GB space mentioned in the event checklist is **not enough** for a guaranteed local Gemma setup. Prefer Colab with sufficient available storage. We have **not** completed Gemma inference or RapidOCR inference in the authoring environment (package download internet access was unavailable).
 
 - Official Gemma inference guide: https://ai.google.dev/gemma/docs/core/huggingface_inference

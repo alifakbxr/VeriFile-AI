@@ -80,14 +80,21 @@ def analyze_ui(path, reference_path, use_gemma, use_exiftool):
                         f"**Kronologi metadata:** `{timeline['chronology']}`\n\n"
                         '> Tanggal berasal dari klaim metadata internal; waktu upload/Colab bukan waktu pembuatan asli. ' 
                         'Pada foto layar, waktu EXIF kamera merujuk pengambilan foto, bukan waktu transaksi bank.\n\n')
+        ai_report = report['gemma4']
+        ai_label = ai_report['status']
+        if ai_report.get('provider') == 'gemini_api' and ai_report.get('model'):
+            ai_label = f"{ai_label} ({ai_report['model']})"
+        ai_summary = (ai_report.get('analysis') or {}).get('summary') if isinstance(ai_report.get('analysis'), dict) else None
+        ai_section = f"\n\n**Ringkasan AI (`{ai_report.get('model') or 'n/a'}`):** {ai_summary}" if ai_summary else ''
         markdown = (f"### Hasil: {report['forensics']['summary']}\n"
                     f"**Jenis:** `{report['file']['type_detected']}` · "
                     f"**SHA-256:** `{report['file']['sha256']}`\n\n"
                     f"**OCR:** `{status}` · **ROI calon nominal:** {detected} · "
-                    f"**Gemma 4:** `{report['gemma4']['status']}` · **Foto layar:** `{recapture_status}`\n\n"
+                    f"**AI Multimodal:** `{ai_label}` · **Foto layar:** `{recapture_status}`\n\n"
                     + date_section + "**Indikator**\n" + ('\n'.join(
                         f"- **{f['title']}** ({f['severity']}): {f['detail']}" for f in found)
-                        if found else '- Tidak ada temuan dari pemeriksaan terbatas.') +
+                        if found else '- Tidak ada temuan dari pemeriksaan terbatas.')
+                    + ai_section +
                     "\n\n> **Heatmap bukan peluang pemalsuan.** Validasi transaksi tetap melalui bank.")
         _cleanup_old_reports()
         output = tempfile.NamedTemporaryFile(mode='w', suffix='.json', prefix='verifile-report-',
@@ -105,8 +112,9 @@ def analyze_ui(path, reference_path, use_gemma, use_exiftool):
 
 def build_app():
     with gr.Blocks(title='VeriFile AI — Transfer Screenshot Forensics') as app:
-        gr.Markdown('# 🔎 VeriFile AI\n**Deteksi penimpaan nominal dan foto layar HP** · JPG/PNG/WebP/PDF/DOCX · RapidOCR + OpenCV + Gemma 4')
-        gr.Markdown('Diproses di runtime Python. Jangan upload bukti transfer sensitif ke demo publik. '
+        gr.Markdown('# 🔎 VeriFile AI\n**Deteksi penimpaan nominal dan foto layar HP** · JPG/PNG/WebP/PDF/DOCX · RapidOCR + OpenCV + Gemma 4 / Gemini Fallback')
+        gr.Markdown('Diproses di runtime Python (jika fallback Gemini API aktif dan dicentang, gambar dikirim ke Gemini API). '
+                    'Jangan upload bukti transfer sensitif ke demo publik. '
                     'Tidak ada verdict fraud otomatis; heatmap hanya panduan inspeksi visual.')
         with gr.Row():
             with gr.Column():
@@ -115,7 +123,7 @@ def build_app():
                               type='filepath')
                 reference = gr.File(label='Opsional: file ASLI transaksi yang sama, sebelum edit (gambar dan resolusi identik)',
                                     file_types=['.jpg', '.jpeg', '.png', '.webp'], type='filepath')
-                gemma_check = gr.Checkbox(value=False, label='Jalankan Gemma 4 multimodal (opsional, butuh GPU/model)')
+                gemma_check = gr.Checkbox(value=False, label='Jalankan AI multimodal (Gemma 4 lokal GPU; otomatis fallback ke Gemini API bila GEMINI_API_KEY diset)')
                 deep_check = gr.Checkbox(value=False, label='Scan ExifTool tambahan (opsional, jika terinstal)')
                 run = gr.Button('Analisis bukti transfer dan sumber foto', variant='primary')
             with gr.Column():
