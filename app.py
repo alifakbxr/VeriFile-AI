@@ -40,6 +40,76 @@ def _cleanup_old_reports(max_age_seconds: int = 1800, max_files: int = 50) -> No
         pass
 
 
+def _generate_multi_overview(reports: list[dict]) -> str:
+    if not reports or len(reports) <= 1:
+        return ""
+
+    total = len(reports)
+    manipulated = sum(1 for r in reports if r.get('verdict_category') == 'MANIPULASI_TERDETEKSI')
+    recaptured = sum(1 for r in reports if r.get('verdict_category') == 'FOTO_LAYAR_HP')
+    clean = sum(1 for r in reports if r.get('verdict_category') == 'TIDAK_TERDETEKSI_ANOMALI')
+    review = sum(1 for r in reports if r.get('verdict_category') == 'PERLU_VERIFIKASI')
+
+    overview_html = f"""
+    <div style="background-color: #f8fafc; border: 2px solid #64748b; border-radius: 12px; padding: 18px 24px; margin-bottom: 20px;">
+        <div style="font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 8px;">
+            📊 Ringkasan Analisis Multi-Upload ({total} Berkas Dianalisis)
+        </div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;">
+            <span style="background-color: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">🚨 Manipulasi/AI: {manipulated}</span>
+            <span style="background-color: #e0f2fe; color: #075985; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">📱 Foto Layar: {recaptured}</span>
+            <span style="background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">⚠️ Perlu Verifikasi: {review}</span>
+            <span style="background-color: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">✅ Bersih: {clean}</span>
+        </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #cbd5e1; color: #475569;">
+                        <th style="padding: 8px;">Nama Berkas</th>
+                        <th style="padding: 8px;">Bank / Platform</th>
+                        <th style="padding: 8px;">Nominal</th>
+                        <th style="padding: 8px;">Hasil Deteksi</th>
+                        <th style="padding: 8px;">Tingkat Risiko</th>
+                    </tr>
+                </thead>
+                <tbody>
+    """
+    for r in reports:
+        name = r.get('file', {}).get('name', 'file')
+        receipt = r.get('receipt_data', {})
+        bank = receipt.get('bank', '-') if receipt else '-'
+        amt = receipt.get('amounts', {}).get('header', '-') if receipt else '-'
+        cat = r.get('verdict_category', '')
+        title = r.get('verdict_title', '')
+        risk = r.get('risk_level', '')
+
+        if cat == 'MANIPULASI_TERDETEKSI':
+            color = '#dc2626'
+        elif cat == 'FOTO_LAYAR_HP':
+            color = '#0284c7'
+        elif cat == 'PERLU_VERIFIKASI':
+            color = '#d97706'
+        else:
+            color = '#16a34a'
+
+        overview_html += f"""
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                        <td style="padding: 8px; font-weight: 600;">{name}</td>
+                        <td style="padding: 8px;">{bank}</td>
+                        <td style="padding: 8px; font-weight: 700;">{amt}</td>
+                        <td style="padding: 8px; color: {color}; font-weight: 700;">{title}</td>
+                        <td style="padding: 8px;"><span style="color: {color}; font-weight: bold;">{risk}</span></td>
+                    </tr>
+        """
+    overview_html += """
+                </tbody>
+            </table>
+        </div>
+    </div>
+    """
+    return overview_html
+
+
 def _format_verdict_card(report: dict) -> str:
     category = report.get('verdict_category', 'TIDAK_TERDETEKSI_ANOMALI')
     title = report.get('verdict_title', 'Hasil Pemeriksaan')
@@ -146,120 +216,257 @@ def _format_details_markdown(report: dict) -> str:
     return "\n\n".join(sections)
 
 
-def analyze_ui(image_path=None, doc_path=None, reference_path=None, use_gemma=False, use_exiftool=False):
-    target_path = image_path or doc_path
-    if not target_path:
+def analyze_multi_ui(files=None, use_gemma=False, use_exiftool=False):
+    if not files:
         empty_card = """
         <div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 30px; text-align: center; color: #64748b;">
             <h3 style="margin-top: 0;">Silakan unggah gambar bukti transfer</h3>
-            <p>Sistem akan otomatis mendeteksi manipulasi, rekayasa Generative AI (C2PA/SynthID), dan konsistensi nominal transaksi.</p>
+            <p>Pilih atau drag satu atau beberapa bukti transfer (JPG, PNG, WebP) untuk langsung mendeteksi manipulasi, rekayasa Generative AI, dan konsistensi nominal.</p>
         </div>
         """
-        return empty_card, '', {}, None, None, None, None, None
-    try:
-        report, pages, ela = analyze_file(target_path, reference_path=reference_path, use_exiftool=use_exiftool)
-        overlay_view = None
-        reference_view = None
-        crops = []
-        recapture_view = None
-        if pages:
-            candidates = report['forensics']['overlay_diagnostics'][0]['amount_candidates']
-            overlay_view = render_diagnostic_preview(pages[0], candidates)
-            crops = amount_crops(pages[0], candidates)
-            recapture_view = inspect_screen_recapture(pages[0])[1]
-        if reference_path and pages and report['forensics']['reference_comparison']['status'] == 'completed':
-            with Image.open(reference_path) as original:
-                reference_view = compare_with_reference(pages[0], original, allow_rescale=True)[1]
-        if use_gemma:
-            try:
-                report['gemma4'] = reviewer.review(report, pages[:1] + crops[:2] if crops else pages[:3])
-            except Exception as exc:
-                report['gemma4'] = {'status': 'error', 'model': reviewer.model_id,
-                                    'analysis': {'error': f'{type(exc).__name__}: {exc}'[:800]}}
+        return "", gr.Dropdown(choices=[], value=None, visible=False), empty_card, "", None, None, None, None, {}, None, {}
 
-        card_html = _format_verdict_card(report)
-        details_md = _format_details_markdown(report)
+    if isinstance(files, str):
+        files = [files]
+    else:
+        files = list(files)
 
-        _cleanup_old_reports()
-        output = tempfile.NamedTemporaryFile(mode='w', suffix='.json', prefix='verifile-report-',
-                                             dir=REPORTS_DIR, delete=False, encoding='utf-8')
-        with output:
-            json.dump(report, output, indent=2, ensure_ascii=False)
+    items_data = {}
+    reports_list = []
+    _cleanup_old_reports()
+
+    for path in files:
+        if not path:
+            continue
         try:
-            os.chmod(output.name, 0o600)
-        except OSError:
-            pass
+            report, pages, ela = analyze_file(path, use_exiftool=use_exiftool)
+            overlay_view = None
+            crops = []
+            recapture_view = None
+            if pages:
+                candidates = report['forensics']['overlay_diagnostics'][0]['amount_candidates']
+                overlay_view = render_diagnostic_preview(pages[0], candidates)
+                crops = amount_crops(pages[0], candidates)
+                recapture_view = inspect_screen_recapture(pages[0])[1]
+            if use_gemma and pages:
+                try:
+                    report['gemma4'] = reviewer.review(report, pages[:1] + crops[:2] if crops else pages[:3])
+                except Exception as exc:
+                    report['gemma4'] = {'status': 'error', 'model': reviewer.model_id,
+                                        'analysis': {'error': f'{type(exc).__name__}: {exc}'[:800]}}
 
-        return card_html, details_md, report, overlay_view, ela, recapture_view, reference_view, output.name
-    except (UnsafeFile, OSError, ValueError) as exc:
-        err_card = f"""
-        <div style="background-color: #fee2e2; border: 2px solid #ef4444; border-radius: 12px; padding: 18px 24px; color: #991b1b;">
-            <h3 style="margin: 0 0 8px 0;">Tidak Dapat Memproses File</h3>
-            <p style="margin: 0;">{exc}</p>
-        </div>
-        """
-        return err_card, f"**Error:** {exc}", {}, None, None, None, None, None
+            output = tempfile.NamedTemporaryFile(mode='w', suffix='.json', prefix='verifile-report-',
+                                                 dir=REPORTS_DIR, delete=False, encoding='utf-8')
+            with output:
+                json.dump(report, output, indent=2, ensure_ascii=False)
+            try:
+                os.chmod(output.name, 0o600)
+            except OSError:
+                pass
+
+            file_key = Path(path).name
+            if file_key in items_data:
+                file_key = f"{file_key}_{len(items_data)+1}"
+
+            items_data[file_key] = {
+                'report': report,
+                'page': pages[0] if pages else None,
+                'overlay': overlay_view,
+                'ela': ela,
+                'recapture': recapture_view,
+                'report_file': output.name,
+            }
+            reports_list.append(report)
+        except (UnsafeFile, OSError, ValueError) as exc:
+            file_key = Path(path).name
+            items_data[file_key] = {
+                'error': str(exc),
+                'report': {'verdict_title': 'Gagal Memproses File', 'verdict_category': 'ERROR', 'risk_level': 'UNKNOWN', 'forensics': {'summary': str(exc), 'findings': []}},
+                'page': None, 'overlay': None, 'ela': None, 'recapture': None, 'report_file': None
+            }
+
+    if not items_data:
+        return "", gr.Dropdown(choices=[], value=None, visible=False), "", "", None, None, None, None, {}, None, {}
+
+    # Auto comparison between uploaded files if 2 files uploaded
+    diff_view = None
+    if len(files) == 2 and len(items_data) == 2:
+        keys = list(items_data.keys())
+        p1 = items_data[keys[0]].get('page')
+        p2 = items_data[keys[1]].get('page')
+        if p1 and p2:
+            try:
+                comp, diff_img = compare_with_reference(p2, p1, allow_rescale=True)
+                if comp.get('status') == 'completed':
+                    diff_view = diff_img
+            except Exception:
+                diff_view = None
+
+    overview_html = _generate_multi_overview(reports_list)
+    file_choices = list(items_data.keys())
+
+    # Prioritize flagged/manipulated file as default if present
+    default_key = file_choices[0]
+    for k in file_choices:
+        if items_data[k].get('report', {}).get('verdict_category') == 'MANIPULASI_TERDETEKSI':
+            default_key = k
+            break
+
+    active = items_data[default_key]
+    if 'error' in active:
+        card_html = f"<div style='background-color:#fee2e2; border:2px solid #ef4444; border-radius:12px; padding:18px; color:#991b1b;'><h3>Gagal: {default_key}</h3><p>{active['error']}</p></div>"
+        details_md = f"**Error:** {active['error']}"
+        active_json = {}
+        active_file = None
+    else:
+        card_html = _format_verdict_card(active['report'])
+        details_md = _format_details_markdown(active['report'])
+        active_json = active['report']
+        active_file = active['report_file']
+
+    return (
+        overview_html,
+        gr.Dropdown(choices=file_choices, value=default_key, visible=len(file_choices) > 1),
+        card_html,
+        details_md,
+        active.get('overlay'),
+        active.get('ela'),
+        active.get('recapture'),
+        diff_view,
+        active_json,
+        active_file,
+        items_data
+    )
+
+
+def on_select_file(selected_name, state_data):
+    if isinstance(selected_name, (tuple, list)) and len(selected_name) > 0:
+        selected_name = selected_name[0]
+    if not state_data or not selected_name or selected_name not in state_data:
+        return "", "", None, None, None, {}, None
+    active = state_data[selected_name]
+    if 'error' in active:
+        card_html = f"<div style='background-color:#fee2e2; border:2px solid #ef4444; border-radius:12px; padding:18px; color:#991b1b;'><h3>Gagal: {selected_name}</h3><p>{active['error']}</p></div>"
+        return card_html, f"**Error:** {active['error']}", None, None, None, {}, None
+
+    card_html = _format_verdict_card(active['report'])
+    details_md = _format_details_markdown(active['report'])
+    return (
+        card_html,
+        details_md,
+        active.get('overlay'),
+        active.get('ela'),
+        active.get('recapture'),
+        active.get('report', {}),
+        active.get('report_file')
+    )
+
+
+def analyze_ui(path=None, reference_path=None, use_gemma=False, use_exiftool=False):
+    """Backward compatibility wrapper for single/reference upload calls."""
+    files = [path] if path else []
+    if reference_path:
+        files.append(reference_path)
+    res = analyze_multi_ui(files, use_gemma=use_gemma, use_exiftool=use_exiftool)
+    card_html = res[2]
+    details_md = res[3]
+    overlay_view = res[4]
+    ela = res[5]
+    recapture_view = res[6]
+    diff_view = res[7]
+    json_rep = res[8]
+    output_name = res[9]
+    combined_md = f"{card_html}\n\n{details_md}"
+    return combined_md, json_rep, ela, overlay_view, diff_view, recapture_view, output_name
 
 
 def build_app():
     with gr.Blocks(title='VeriFile AI — Deteksi Bukti Transfer Otomatis', theme=gr.themes.Soft()) as app:
         gr.Markdown(
             "# 🔎 VeriFile AI\n"
-            "### Sistem Deteksi Otomatis Integritas Bukti Transfer & Struk Pembayaran\n"
-            "Cukup unggah gambar bukti transfer (JPG, PNG, WebP) — sistem akan langsung mendeteksi apakah bukti transfer asli, terindikasi rekayasa Generative AI (C2PA/SynthID), software editor grafis (Photoshop/Canva), foto ulang layar HP, atau inkonsistensi nominal transaksi."
+            "### Sistem Deteksi Otomatis Integritas Bukti Transfer (Multi-Upload Forensics)\n"
+            "Unggah satu atau banyak bukti transfer sekaligus (JPG, PNG, WebP) — sistem akan langsung mendeteksi rekayasa **Generative AI (C2PA/SynthID)**, **software editor grafis (Photoshop/Canva)**, **foto ulang layar HP (recapture)**, serta mengekstrak rincian struk dan memeriksa **konsistensi nominal transaksi** secara otomatis tanpa perlu file pembanding."
         )
+
+        state_store = gr.State({})
 
         with gr.Row():
             with gr.Column(scale=5):
-                inp = gr.Image(
-                    label="📸 Unggah Bukti Transfer (Drag & Drop atau Paste)",
-                    type="filepath",
-                    sources=["upload", "clipboard"]
+                inp = gr.File(
+                    label="📸 Unggah Bukti Transfer (Bisa pilih/drag banyak berkas sekaligus)",
+                    file_count="multiple",
+                    file_types=[".jpg", ".jpeg", ".png", ".webp", ".pdf", ".docx"],
+                    type="filepath"
                 )
-                run_btn = gr.Button("🔍 Deteksi Keaslian Bukti Transfer", variant="primary", size="lg")
+                with gr.Row():
+                    run_btn = gr.Button("🔍 Deteksi Bukti Transfer", variant="primary", size="lg")
+                    clear_btn = gr.ClearButton(components=[inp], value="Hapus File")
 
-                with gr.Accordion("⚙️ Opsi Lanjutan & File Dokumen (PDF/DOCX/Referensi)", open=False):
-                    doc_inp = gr.File(
-                        label="Atau unggah file PDF / DOCX (maks. 20 MB)",
-                        file_types=[".pdf", ".docx", ".jpg", ".jpeg", ".png", ".webp"],
-                        type="filepath"
-                    )
-                    reference_inp = gr.Image(
-                        label="Opsional: File bukti ASLI transaksi yang sama sebagai pembanding",
-                        type="filepath",
-                        sources=["upload", "clipboard"]
-                    )
+                with gr.Accordion("⚙️ Opsi Tambahan (Gemma Multimodal / ExifTool)", open=False):
                     gemma_check = gr.Checkbox(value=False, label="Gemma 4 Multimodal Verification (opsional, butuh GPU)")
                     deep_check = gr.Checkbox(value=False, label="Deep Scan ExifTool (opsional, jika terpasang)")
 
-            with gr.Column(scale=6):
+            with gr.Column(scale=7):
+                multi_overview = gr.HTML()
+                file_selector = gr.Dropdown(
+                    label="📂 Pilih Berkas untuk Melihat Detail Forensik",
+                    choices=[],
+                    visible=False,
+                    interactive=True
+                )
                 verdict_card = gr.HTML(
                     """<div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 30px; text-align: center; color: #64748b;">
                     <h3 style="margin-top: 0;">Belum ada bukti transfer diunggah</h3>
-                    <p>Unggah atau paste gambar bukti transfer di sebelah kiri untuk melihat hasil deteksi langsung.</p>
+                    <p>Pilih atau drag satu atau banyak gambar bukti transfer di sebelah kiri untuk melihat hasil deteksi langsung.</p>
                     </div>"""
                 )
                 details_text = gr.Markdown()
 
-        gr.Markdown("### 🔬 Visualisasi & Diagnostik Forensik Lanjutan")
+        gr.Markdown("### 🔬 Visualisasi & Diagnostik Forensik Berkas Terpilih")
         with gr.Tabs():
             with gr.TabItem("🎯 Deteksi Teks & ROI Nominal"):
                 overlay_img = gr.Image(label="Area ROI Nominal & Analisis Tekstur Teks", type="pil")
             with gr.TabItem("🔬 Analisis Error Level (ELA)"):
-                ela = gr.Image(label="Visualisasi Kompresi JPEG (Error Level Analysis)", type="pil")
+                ela_img = gr.Image(label="Visualisasi Kompresi JPEG (Error Level Analysis)", type="pil")
             with gr.TabItem("📱 Deteksi Foto Layar HP"):
                 recapture_img = gr.Image(label="Kontur Layar / Indikasi Recapture Layar Fisik", type="pil")
-            with gr.TabItem("⚖️ Perbandingan Referensi Asli"):
-                difference_img = gr.Image(label="Peta Perbedaan Piksel vs Bukti Asli", type="pil")
+            with gr.TabItem("⚖️ Perbandingan Antar Berkas"):
+                difference_img = gr.Image(label="Peta Perbedaan Piksel Antar File (Otomatis jika mengunggah pasangan struk)", type="pil")
             with gr.TabItem("📋 Laporan Audit JSON"):
                 json_view = gr.JSON(label="Struktur Data Audit Lengkap")
                 downloadable = gr.File(label="Unduh Laporan Forensik JSON")
 
-        inputs = [inp, doc_inp, reference_inp, gemma_check, deep_check]
-        outputs = [verdict_card, details_text, json_view, overlay_img, ela, recapture_img, difference_img, downloadable]
+        inputs = [inp, gemma_check, deep_check]
+        outputs = [
+            multi_overview,
+            file_selector,
+            verdict_card,
+            details_text,
+            overlay_img,
+            ela_img,
+            recapture_img,
+            difference_img,
+            json_view,
+            downloadable,
+            state_store
+        ]
 
-        run_btn.click(analyze_ui, inputs=inputs, outputs=outputs)
-        inp.change(analyze_ui, inputs=inputs, outputs=outputs)
+        run_btn.click(analyze_multi_ui, inputs=inputs, outputs=outputs)
+        inp.change(analyze_multi_ui, inputs=inputs, outputs=outputs)
+
+        file_selector.change(
+            on_select_file,
+            inputs=[file_selector, state_store],
+            outputs=[
+                verdict_card,
+                details_text,
+                overlay_img,
+                ela_img,
+                recapture_img,
+                json_view,
+                downloadable
+            ]
+        )
 
     return app
 
