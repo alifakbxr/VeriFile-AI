@@ -9,7 +9,7 @@ import struct
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from xml.etree import ElementTree as ET
+import defusedxml.ElementTree as ET
 
 MAX_XMP_BYTES = 256 * 1024
 

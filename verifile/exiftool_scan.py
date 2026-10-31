@@ -14,6 +14,17 @@ from .timeline import add_stamp, select_timeline
 
 
 
+def get_exiftool_version(binary: str) -> str | None:
+    try:
+        completed = subprocess.run([binary, '-ver'], capture_output=True, text=True,
+                                   timeout=5, check=False)  # nosec B603
+        if completed.returncode == 0:
+            return completed.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def enrich_report(report: dict, path: str | Path) -> None:
     """Read a local file via ExifTool; include only non-sensitive forensic tags."""
     binary = shutil.which('exiftool')
@@ -23,12 +34,13 @@ def enrich_report(report: dict, path: str | Path) -> None:
             'install': 'Ubuntu/Colab: apt-get install -y libimage-exiftool-perl'
         }
         return
+    version = get_exiftool_version(binary)
     # No shell; no write flags; no upload of raw content to third-party services.
     command = [binary, '-j', '-G1', '-s', '-a', '-time:all',
                '-Software', '-CreatorTool', '-Creator', '-Producer', '-Artist', '--', str(path)]
     try:
         completed = subprocess.run(command, capture_output=True, text=True,
-                                   timeout=15, check=False)
+                                   timeout=15, check=False)  # nosec B603
         if completed.returncode != 0:
             report['forensics']['exiftool'] = {'status': 'failed',
                                               'detail': 'ExifTool gagal memproses file.'}
@@ -72,12 +84,21 @@ def enrich_report(report: dict, path: str | Path) -> None:
         report['forensics']['findings'].extend(f for f in new_findings if f['code'] not in old_codes)
         if any(f['severity']=='review' for f in new_findings):
             report['forensics']['summary'] = 'Perlu pemeriksaan lanjutan'
-        report['forensics']['exiftool'] = {'status': 'completed',
-                                          'supplemental_embedded_time_tags': len(new_entries),
-                                          'editor_tags': editor_tags,
-                                          'runtime_filesystem_tags': fs_times,
-                                          'warning': 'Tag File/System berasal dari mesin saat analisis, '
-                                                     'bukan verifikasi tanggal asli.'}
+        exiftool_info = {'status': 'completed',
+                         'version': version,
+                         'supplemental_embedded_time_tags': len(new_entries),
+                         'editor_tags': editor_tags,
+                         'runtime_filesystem_tags': fs_times,
+                         'warning': 'Tag File/System berasal dari mesin saat analisis, bukan verifikasi tanggal asli.'}
+        if version:
+            try:
+                # Flag known legacy versions (< 12.50) vulnerable to upstream CVEs
+                major_minor = float('.'.join(version.split('.')[:2]))
+                if major_minor < 12.50:
+                    exiftool_info['security_advisory'] = f'Versi ExifTool {version} lawas (< 12.50); perbarui untuk mitigasi celah keamanan.'
+            except (ValueError, IndexError):
+                pass
+        report['forensics']['exiftool'] = exiftool_info
     except (subprocess.TimeoutExpired, ValueError, json.JSONDecodeError, OSError):
         report['forensics']['exiftool'] = {'status': 'error',
                                           'detail': 'Scan tambahan tidak selesai; analisis inti tetap tersedia.'}

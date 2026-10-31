@@ -8,13 +8,13 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from xml.etree import ElementTree as ET
+import defusedxml.ElementTree as ET
 
 import fitz
 import numpy as np
 from PIL import ExifTags, Image, ImageChops, ImageEnhance, ImageOps, UnidentifiedImageError
 
-from .overlay import inspect_amount_overlay, compare_with_reference
+from .overlay import inspect_amount_overlay, compare_with_reference, _redact
 from .recapture import inspect_screen_recapture
 from .timeline import add_stamp, extract_xmp, extract_png_time, select_timeline, observed_filesystem_times
 
@@ -23,7 +23,11 @@ MAX_DOCX_EXPANDED_BYTES = 40 * 1024 * 1024
 MAX_PAGES = 3
 MAX_IMAGES = 3
 MAX_PIXELS = 24_000_000
+MAX_PDF_DIMENSION_POINTS = 5000
+MAX_XML_MEMBER_BYTES = 10 * 1024 * 1024
 SUPPORTED = {'jpeg', 'png', 'webp', 'pdf', 'docx'}
+
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 
 
 class UnsafeFile(ValueError):
@@ -227,12 +231,16 @@ def _pdf_analysis(data: bytes) -> tuple[dict, list, list, Image.Image | None]:
                                          'Parser PDF melakukan pemulihan struktur; ini bukan bukti pemalsuan.', 'review', 'structure'))
             for i in range(min(document.page_count, MAX_PAGES)):
                 page = document.load_page(i)
-                rendered = page.get_pixmap(matrix=fitz.Matrix(1.35, 1.35), alpha=False)
+                rect = page.rect
+                if rect.width <= 0 or rect.height <= 0 or rect.width > MAX_PDF_DIMENSION_POINTS or rect.height > MAX_PDF_DIMENSION_POINTS:
+                    raise UnsafeFile(f'Dimensi halaman PDF ({int(rect.width)}x{int(rect.height)}) di luar batas aman.')
+                scale = min(1.35, (MAX_PIXELS / max(1.0, rect.width * rect.height)) ** 0.5)
+                rendered = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
                 with Image.open(io.BytesIO(rendered.tobytes('png'))) as opened:
                     frame = opened.convert('RGB')
                     frame.thumbnail((1500, 1500))
                     pages.append(frame.copy())
-                page_text = page.get_text('text')[:6000]
+                page_text = _redact(page.get_text('text')[:6000])
                 annots = list(page.annots() or [])
                 meta['pages'].append({'index': i + 1, 'selectable_text': page_text,
                                       'annotation_count': len(annots), 'embedded_image_count': len(page.get_images())})
@@ -260,6 +268,15 @@ def _pdf_analysis(data: bytes) -> tuple[dict, list, list, Image.Image | None]:
         raise UnsafeFile('PDF tidak valid atau gagal dirender dengan aman.') from exc
 
 
+def _safe_xml_parse(xml_data: bytes) -> ET.Element:
+    if len(xml_data) > MAX_XML_MEMBER_BYTES or b'<!DOCTYPE' in xml_data.upper() or b'<!ENTITY' in xml_data.upper():
+        raise UnsafeFile('XML DOCX memuat deklarasi entitas/DTD atau melebihi batas ukuran.')
+    try:
+        return ET.fromstring(xml_data)
+    except Exception as exc:
+        raise UnsafeFile('Struktur XML tidak valid.') from exc
+
+
 def _docx_analysis(data: bytes) -> tuple[dict, list, list, Image.Image | None]:
     meta = {'core_properties': {}, 'text_preview': '', 'embedded_image_count': 0}
     docx_stamps: list[dict] = []
@@ -271,20 +288,22 @@ def _docx_analysis(data: bytes) -> tuple[dict, list, list, Image.Image | None]:
         names = set(z.namelist())
         if 'docProps/core.xml' in names:
             try:
-                root = ET.fromstring(z.read('docProps/core.xml'))
+                root = _safe_xml_parse(z.read('docProps/core.xml'))
                 for element in root.iter():
                     key = element.tag.split('}')[-1]
                     if key in {'creator', 'lastModifiedBy', 'created', 'modified', 'revision', 'title'} and element.text:
                         meta['core_properties'][key] = _text(element.text)
                         if key in {'created', 'modified'}:
                             add_stamp(docx_stamps, key, 'docx.core.' + key, element.text)
-            except ET.ParseError:
+            except (UnsafeFile, ET.ParseError):
                 findings.append(_finding('corexml_invalid', 'Metadata DOCX gagal dibaca',
-                                         'core.xml tidak dapat diparsing.', 'review', 'structure'))
+                                         'core.xml tidak dapat diparsing atau tidak aman.', 'review', 'structure'))
         try:
-            root = ET.fromstring(z.read('word/document.xml'))
+            root = _safe_xml_parse(z.read('word/document.xml'))
             pieces = [(el.text or '') for el in root.iter() if el.tag.endswith('}t')]
-            meta['text_preview'] = ' '.join(pieces)[:8000]
+            meta['text_preview'] = _redact(' '.join(pieces)[:8000])
+        except UnsafeFile:
+            raise
         except ET.ParseError as exc:
             raise UnsafeFile('Isi XML DOCX tidak valid.') from exc
         # ZIP member times are stored as timezone-less DOS timestamps. They are

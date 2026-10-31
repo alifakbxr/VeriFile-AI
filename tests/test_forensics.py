@@ -63,3 +63,44 @@ def test_docx_core_metadata():
 def test_ai_parser_nonjson_is_not_fabricated():
     assert 'unstructured_model_output' in _json_or_raw('AI thinks something')
     assert _json_or_raw('{"summary": "belum pasti"}')['summary'] == 'belum pasti'
+
+
+def test_pdf_oversized_dimensions_rejected():
+    d = fitz.open()
+    d.new_page(width=6000, height=6000)
+    content = d.tobytes()
+    d.close()
+    with pytest.raises(UnsafeFile, match='di luar batas aman'):
+        analyze_bytes(content, 'huge_dim.pdf')
+
+
+def test_pdf_pii_account_masked():
+    d = fitz.open()
+    p = d.new_page(width=300, height=200)
+    p.insert_text((50, 80), 'Rekening: 123456789012')
+    content = d.tobytes()
+    d.close()
+    report, _, _ = analyze_bytes(content, 'masked.pdf')
+    text = report['forensics']['metadata']['pages'][0]['selectable_text']
+    assert '123456789012' not in text
+    assert '********9012' in text
+
+
+def test_docx_entity_dtd_rejected():
+    stream = io.BytesIO()
+    with ZipFile(stream, 'w') as z:
+        z.writestr('[Content_Types].xml', '<Types/>')
+        z.writestr('word/document.xml', '<!DOCTYPE test [<!ENTITY xxe "evil">]><w:document xmlns:w="urn:word"><w:t>&xxe;</w:t></w:document>')
+    with pytest.raises(UnsafeFile, match='entitas/DTD'):
+        analyze_bytes(stream.getvalue(), 'xxe.docx')
+
+
+def test_docx_pii_account_masked():
+    stream = io.BytesIO()
+    with ZipFile(stream, 'w') as z:
+        z.writestr('[Content_Types].xml', '<Types/>')
+        z.writestr('word/document.xml', '<w:document xmlns:w="urn:word"><w:t>Transfer ke 555123456789 Sukses</w:t></w:document>')
+    report, _, _ = analyze_bytes(stream.getvalue(), 'doc.docx')
+    preview = report['forensics']['metadata']['text_preview']
+    assert '555123456789' not in preview
+    assert '********6789' in preview
