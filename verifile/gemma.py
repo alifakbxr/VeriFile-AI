@@ -70,12 +70,38 @@ class Gemma4Reviewer:
             raise RuntimeError('CUDA GPU tidak tersedia. Gunakan mode forensik saja, atau jalankan Gemma di Colab GPU.')
         model_kwargs = {}
         if torch.cuda.is_available() and os.getenv('GEMMA_4BIT', '1') == '1':
-            from transformers import BitsAndBytesConfig
-            model_kwargs['quantization_config'] = BitsAndBytesConfig(
-                load_in_4bit=True, bnb_4bit_quant_type='nf4',
-                bnb_4bit_compute_dtype=torch.float16)
-        self.pipe = pipeline(task='any-to-any', model=self.model_id,
-                             device_map='auto', dtype='auto', model_kwargs=model_kwargs)
+            try:
+                import bitsandbytes  # noqa: F401
+                from transformers import BitsAndBytesConfig
+                model_kwargs['quantization_config'] = BitsAndBytesConfig(
+                    load_in_4bit=True, bnb_4bit_quant_type='nf4',
+                    bnb_4bit_compute_dtype=torch.float16)
+            except (ImportError, Exception):
+                if os.getenv('GEMMA_REQUIRE_4BIT') == '1':
+                    raise RuntimeError(
+                        'Kuantisasi 4-bit memerlukan pustaka bitsandbytes>=0.46.1: '
+                        'pip install -U "bitsandbytes>=0.46.1" accelerate'
+                    )
+                # Fallback otomatis ke float16 jika bitsandbytes tidak tersedia
+                model_kwargs['torch_dtype'] = torch.float16
+
+        try:
+            self.pipe = pipeline(task='any-to-any', model=self.model_id,
+                                 device_map='auto', dtype='auto', model_kwargs=model_kwargs)
+        except ImportError as exc:
+            if 'bitsandbytes' in str(exc).lower():
+                if 'quantization_config' in model_kwargs:
+                    model_kwargs.pop('quantization_config', None)
+                    model_kwargs['torch_dtype'] = torch.float16
+                    self.pipe = pipeline(task='any-to-any', model=self.model_id,
+                                         device_map='auto', dtype='auto', model_kwargs=model_kwargs)
+                else:
+                    raise RuntimeError(
+                        'Kuantisasi 4-bit memerlukan bitsandbytes>=0.46.1. '
+                        'Jalankan: pip install -U "bitsandbytes>=0.46.1" accelerate'
+                    ) from exc
+            else:
+                raise
 
     def review(self, report: dict, images: list[Image.Image]) -> dict:
         if not images:
