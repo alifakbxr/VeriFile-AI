@@ -1,0 +1,13 @@
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+.env
+.ipynb_checkpoints/
+reports/
+*.safetensors
+*.gguf
+*.bin
+.huggingface/
+photoholmes_results/
+*.zip

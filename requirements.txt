@@ -1,0 +1,6 @@
+gradio>=5.0,<7
+Pillow>=11,<13
+opencv-python-headless>=4.10,<5
+PyMuPDF>=1.25,<2
+numpy>=2.0,<3
+pytest>=8,<10
