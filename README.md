@@ -60,10 +60,15 @@ Synthetic samples are **not** from a real bank, do not include financial account
 
 An advanced *research* method is [LC&DF for document presentation attack detection](https://github.com/chenlewis/LC-DF-For-DPAD) (BSD-3-Clause). Its published code uses old PyTorch 1.10.1 / Python 3.7 and separately provided weights; it is **not bundled, installed, or tested**. See `docs/SCREEN_RECAPTURE.md` for the roadmap and limitations.
 
-CLI:
+CLI (single file or multi-file / folder batch export to `.pdf`, `.xlsx`, `.csv`, `.json`):
 
 ```bash
+# Single file JSON report
 python -m verifile.cli demo/edited_overlay_sample.pdf --output report.json
+
+# Batch analyze a whole folder of images/PDFs -> generate visual PDF or Excel (.xlsx) report
+python -m verifile.cli "demo/TEST DATA" --ai --output batch_report.pdf
+python -m verifile.cli demo/clean_sample.jpg demo/edited_sample.jpg --output batch_report.xlsx
 ```
 
 ## 2. Google Colab / Gemma 4
