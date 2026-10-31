@@ -12,6 +12,11 @@ Primary target: screenshots or PDFs presented as proof of funds sent. The app mu
 8. **Screen recapture / laundering an edit:** scammer edits a nominal on-screen, then photographs a phone displaying the doctored proof. A new camera JPEG may erase edit metadata and the previously visible local image artifacts. Triage indicators include camera EXIF, display-like contours and context from Gemma; **none is authoritative**, and a photographed legitimate transfer is also possible. Uploaded camera date refers to taking the photo, not when the transfer occurred.
 9. **Metadata removal/fabrication:** common legitimate behavior during export, sharing, and privacy-protecting tools; never an allegation by itself.
 
-### Operator requirements
+### Operator & Pipeline Defenses
 
-Never publish financial documents on public Gradio links, retain full account numbers in shared reports, or assume a reference is genuine without chain-of-custody. Test false-positive cases such as legitimate annotations, approved redactions, reposted images, and heavily compressed screenshots. Show each technique's coverage and `not_run`/`error` state honestly.
+- **Input bounds:** 20 MB file cap (`MAX_FILE_BYTES`), 24 MP limit (`MAX_PIXELS`), and strict PDF page dimension bounds (`MAX_PDF_DIMENSION_POINTS = 5000`) to mitigate Denial of Service (DoS) and out-of-memory crashes.
+- **XML safety:** Member XML files in DOCX archives are defused via `defusedxml`, blocking nested DTDs and entity expansion attacks (Billion Laughs / quadratic blowup).
+- **PII masking:** Account and card numbers (9–20 digits) are automatically masked in diagnostic outputs across OCR candidates, PDF text streams, and DOCX document previews.
+- **Temporary storage hygiene:** Exported reports are isolated to a directory with `0700` permissions and pruned after 30 minutes via automated TTL cleanup.
+- **Access control:** Configurable interface binding and optional HTTP Basic Auth for network deployments (`VERIFILE_AUTH_USER` / `VERIFILE_AUTH_PASS`).
+- **Chain of custody:** Never publish confidential financial documents on public Gradio links, and never assume a reference is genuine without independent verification from an authorized banking institution.

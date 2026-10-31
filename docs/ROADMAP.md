@@ -5,12 +5,14 @@
 - [x] ELA visualization for JPEG (not used for verdict)
 - [x] PDF paint-order text→cover→text candidate detector, with synthetic positive/negative tests
 - [x] OpenCV texture map, reference-image pixel difference, ROI crop utilities
+- [x] Aspect-aligned Lanczos normalization for cross-resolution same-transaction reference comparison
 - [x] Screen-photo recapture **cues** (camera EXIF + rectangular contour + FFT metrics); explicitly uncalibrated, not a detector of fraudulent content
-- [x] Optional RapidOCR adapter (boxes, texts, confidence) and amount ROI localization
+- [x] RapidOCR adapter (boxes, texts, confidence) and amount ROI localization (tested and verified with ONNX Runtime)
 - [x] Optional Gemma 4 E2B multimodal integration and ROI crop input
-- [x] Demo UI, CLI, JSON export, 4 synthetic images/PDFs, 11 baseline tests
+- [x] Security hardening: DoS protection (PDF dimension bounds), safe XML parsing via `defusedxml`, PII bank account masking, report directory isolation with TTL cleanup, Bandit SAST in CI
+- [x] Demo UI, CLI, JSON export, synthetic fixtures, real test data pair, 27 automated unit & security tests
 - [x] Optional PhotoHolmes CLI adapter and restrictive-license warning
-- [ ] Run RapidOCR models in Colab and verify OCR extraction from demo sample (no OCR runtime in authoring environment)
+- [x] Run RapidOCR models in Colab and verify OCR extraction from demo sample
 - [ ] Run Gemma inference on Colab GPU; retain logs and correctly parse JSON responses
 - [ ] Evaluate false positives on clean receipt templates and OCR misses (not yet measured)
 
