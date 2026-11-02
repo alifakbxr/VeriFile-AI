@@ -460,12 +460,12 @@ def analyze_bytes(data: bytes, filename: str = 'upload', *, reference_bytes: byt
     findings.extend(timeline_findings)
     overlay_diagnostics = []
     recapture_diagnostics = []
-    receipt_data = {}
+    receipt_data = parse_receipt_data([])
     for page_index, view in enumerate(views[:MAX_IMAGES]):
         diagnostic, _, _ = inspect_amount_overlay(view)
         overlay_diagnostics.append({'visual_index': page_index, **diagnostic})
-        if page_index == 0 and diagnostic.get('all_ocr_lines'):
-            receipt_data = parse_receipt_data(diagnostic['all_ocr_lines'])
+        if page_index == 0:
+            receipt_data = parse_receipt_data(diagnostic.get('all_ocr_lines', []))
             if receipt_data.get('is_receipt'):
                 consistency = receipt_data.get('internal_consistency', {})
                 if not consistency.get('is_consistent'):

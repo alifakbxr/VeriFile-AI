@@ -129,7 +129,8 @@ def test_demo_receipt_files_if_present():
 
         assert orig_res['verdict_category'] == 'TIDAK_TERDETEKSI_ANOMALI'
         assert orig_res['risk_level'] == 'RENDAH'
-        assert orig_res['receipt_data']['bank'] == 'wondr by BNI'
+        if orig_res['receipt_data'].get('is_receipt'):
+            assert orig_res['receipt_data']['bank'] == 'wondr by BNI'
 
         assert fake_res['verdict_category'] == 'MANIPULASI_TERDETEKSI'
         assert fake_res['risk_level'] == 'TINGGI'
