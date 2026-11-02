@@ -1,59 +1,59 @@
 # 🔎 VeriFile AI — Hacktoberfest Hack Day Medan 2026
 
-**Sistem Deteksi Otomatis Integritas Bukti Transfer & Struk Pembayaran (Single-Upload Forensics)** dengan fokus utama pada **bukti transfer bank / dompet digital** (JPG, PNG, WebP). Cukup unggah gambar bukti transfer — sistem langsung mendeteksi rekayasa **Generative AI (C2PA/SynthID)**, **software editor grafis (Photoshop/Canva)**, **foto ulang layar HP (recapture)**, serta mengekstraksi data transaksi dan memverifikasi **konsistensi nominal internal** secara otomatis.
+**Automated Digital Forensic Triage & Payment Receipt Verification System** with a core focus on **bank transfer receipts and e-wallet transactions** (JPG, PNG, WebP, PDF, DOCX). Simply upload receipt image(s) — the system automatically detects **Generative AI modifications (C2PA manifests / SynthID watermarks / algorithmic media tags)**, **graphic editing software traces (Photoshop, Canva, GIMP)**, **screen recapture / physical phone screen photographs**, extracts structured transaction data, and verifies **internal arithmetic amount consistency** without requiring an authentic reference file.
 
 ---
 
-## Fitur Utama
+## Key Features
 
-| Modul Forensik | Yang Diperiksa & Dideteksi | Status & Bukti Verifikasi |
+| Forensic Module | Scope & Detections | Status & Verification |
 | --- | --- | --- |
-| **Generative AI & C2PA Provenance** | Deteksi manifest C2PA (Content Credentials), watermark SynthID, tag IPTC `trainedAlgorithmicMedia`, Google Generative AI, Midjourney, DALL-E, Firefly | **Teruji & Terintegrasi**; langsung mendeteksi gambar rekayasa AI dari 1 upload tanpa perlu file asli |
-| **Ekstraksi Struk & Konsistensi OCR** | Ekstraksi bank/aplikasi (wondr by BNI, BCA, Mandiri, BRI, QRIS, DANA, GoPay), status, waktu, Ref ID, pengirim, penerima, dan pengecekan konsistensi nominal | **Teruji & Terintegrasi** via RapidOCR + ONNX Runtime PP-OCRv6 |
-| **Deteksi Software Editor** | Jejak Adobe Photoshop, Canva, GIMP, PicsArt, Pixelmator pada metadata EXIF/XMP maupun binary strings | **Teruji & Terintegrasi** |
-| **Deteksi Foto Layar HP (Recapture)** | Deteksi foto ulang monitor/layar HP vs screenshot digital langsung via kontur interior dan EXIF kamera | **Teruji & Terintegrasi** |
-| **Diagnostik JPEG ELA & Tekstur** | Visualisasi Error Level Analysis (ELA) dan spatial high-frequency energy map pada area nominal | **Teruji & Terintegrasi** |
-| **Perbandingan Referensi (Opsional)** | Analisis perbedaan piksel jika pengguna memiliki file referensi asli transaksi yang sama (dengan normalisasi Lanczos) | **Teruji & Terintegrasi** |
-| **Keamanan & Privasi Tingkat Tinggi** | Proteksi DoS ukuran/resolusi file, parsing XML aman via `defusedxml`, penyamaran nomor rekening (PII masking), pembersihan berkas TTL 30 menit, Bandit SAST clean (0 issues) | **Terverifikasi 100%** (34 unit tests pass) |
+| **Generative AI & C2PA Provenance** | Detection of C2PA manifests (Content Credentials), SynthID watermarks, IPTC `trainedAlgorithmicMedia` tags, Google Generative AI, Midjourney, DALL-E, and Firefly provenance metadata | **Tested & Integrated**; directly detects AI-manipulated images from a single upload without needing original reference |
+| **Receipt OCR & Math Consistency** | Extraction of bank/platform (wondr by BNI, BCA, Mandiri, BRI, QRIS, DANA, GoPay), transaction status, timestamp, Ref ID, sender, recipient, and internal arithmetic consistency checks | **Tested & Integrated** via RapidOCR + ONNX Runtime PP-OCRv6 |
+| **Graphic Editor Detection** | Artifacts and signatures of Adobe Photoshop, Canva, GIMP, PicsArt, Pixelmator across EXIF/XMP metadata and binary structure | **Tested & Integrated** |
+| **Physical Screen Recapture Detection** | Distinguishes photographed physical screens/monitors vs native digital screenshots using interior quadrilateral contours, EXIF camera tags, and FFT frequency cues | **Tested & Integrated** |
+| **JPEG ELA & Texture Diagnostics** | Error Level Analysis (ELA) visualization and spatial high-frequency energy mapping on amount regions | **Tested & Integrated** |
+| **Reference Comparison (Optional)** | High-precision pixel differential analysis when an authentic original from the same transaction is provided (with Lanczos aspect-aligned normalization) | **Tested & Integrated** |
+| **High-Grade Security & Privacy** | Strict file size and resolution DoS limits, safe XML parsing via `defusedxml`, bank account PII masking, 30-minute report TTL cleanup, 100% clean Bandit SAST (0 issues) | **Fully Verified** (48 automated unit & security tests pass) |
 
-> **Catatan Integritas:** Pemeriksaan forensik digital mengevaluasi integritas file, jejak AI/C2PA, metadata perangkat, dan konsistensi teks. Untuk transaksi finansial, konfirmasi mutasi rekening bank resmi tetap merupakan sumber kebenaran mutlak.
+> **Integrity Notice:** Digital forensic examination evaluates file integrity, AI/C2PA traces, device metadata, and text consistency. For financial transactions, official bank account statements remain the authoritative source of truth.
 
 ---
 
-## 1. Quick Start Lokal (Tanpa Butuh GPU)
+## 1. Local Quick Start (No GPU Required)
 
-Direkomendasikan Python **3.10–3.12**.
+Recommended Python version: **3.10–3.12**.
 
 ```bash
 # Clone repository
 git clone https://github.com/alifakbxr/VeriFile-AI.git
 cd VeriFile-AI
 
-# Buat dan aktifkan virtual environment
+# Create and activate virtual environment
 python -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
 
-# Install dependensi inti + RapidOCR
+# Install core dependencies + RapidOCR engine
 pip install -r requirements-ocr.txt
 
-# Buat sample sintetis dan jalankan unit tests
+# Generate synthetic fixtures and run test suite
 python demo/create_samples.py
 python -m pytest -v
 
-# Jalankan antarmuka Gradio
+# Launch the Gradio web interface
 python app.py
 ```
 
-### Alur Deteksi Otomatis (Single Upload)
+### Automated Triage Workflow (Single & Multi-Upload)
 
-1. Buka antarmuka Gradio (`http://localhost:7860`).
-2. **Cukup unggah atau paste gambar bukti transfer** pada kotak utama.
-3. Sistem langsung menghasilkan:
-   - **Verdict Banner Berwarna:** 🚨 *REKAYASA / MANIPULASI TERDETEKSI*, 📱 *FOTO ULANG LAYAR HP*, atau ✅ *SCREENSHOT DIGITAL BERSIH*.
-   - **Ringkasan Data Struk:** Bank/e-wallet, nominal header, rincian nominal, total, status konsistensi nominal, tanggal/waktu, No. Ref, penerima, dan pengirim.
-   - **Tab Diagnostik:** ROI Area Nominal, ELA, Kontur Layar, dan Ekspor Laporan JSON.
+1. Open the Gradio web interface (`http://localhost:7860`).
+2. **Upload or drag-and-drop receipt image(s)** into the input pane.
+3. The system immediately outputs:
+   - **Color-Coded Verdict Banner:** 🚨 *MANIPULATION / AI DETECTED*, 📱 *PHYSICAL SCREEN PHOTO (RECAPTURE)*, or ✅ *CLEAN DIGITAL SCREENSHOT*.
+   - **Receipt Data Breakdown:** Bank/e-wallet, header amount, detailed amounts, total amount, arithmetic consistency verdict, transaction date/time, reference ID, recipient, and sender.
+   - **Diagnostic Tabs:** Amount ROI, ELA, Screen Contours, and JSON / Batch Report Exporters.
 
-### CLI Usage (Single File & Batch Export ke `.pdf`, `.xlsx`, `.csv`, `.json`)
+### CLI Usage (Single File & Batch Export to `.pdf`, `.xlsx`, `.csv`, `.json`)
 
 ```bash
 # Single file JSON report
@@ -69,13 +69,13 @@ python -m verifile.cli demo/clean_sample.jpg demo/edited_sample.jpg --output bat
 
 ---
 
-## 2. Google Colab / Gemma 4 Multimodal
+## 2. Google Colab / Gemma 4 Multimodal & Gemini API Fallback
 
 Open [`notebooks/VeriFile_HackDay_Colab.ipynb`](https://colab.research.google.com/drive/1E6wv2ft5EXBq4_SfTgF3OFXdP93Fhj6A) directly in Google Colab:
 
 1. **Step 1:** Automatically clones the latest repository from GitHub.
-2. **Step 2:** Installs dependencies (`requirements-ocr.txt`), builds demo fixtures, and executes all 27 unit tests.
-3. **Step 3 (Optional Gemma 4):**
+2. **Step 2:** Installs dependencies (`requirements-ocr.txt`), builds demo fixtures, and executes all 48 unit tests.
+3. **Step 3 (Optional Gemma 4 GPU):**
    - Switch Colab runtime: **Runtime → Change runtime type → T4 GPU**.
    - Add your Hugging Face token in Colab **Secrets → `HF_TOKEN`**.
    - Set `ENABLE_GEMMA = True` in the Gemma cell and execute.
@@ -119,13 +119,16 @@ verifile/exiftool_scan.py            Optional subprocess ExifTool scanner with v
 verifile/timeline.py                 Timestamp parsing, XMP/tIME extraction, chronology check
 verifile/cli.py                      Command-line interface
 verifile/receipt.py                 Indonesian receipt parser and amount consistency checker
+verifile/batch.py                   Batch processing and report exporters (PDF, Excel, CSV, JSON)
 requirements.txt                    Core dependencies (Pillow, OpenCV, PyMuPDF, defusedxml)
 requirements-ocr.txt                RapidOCR + ONNX Runtime engine
 requirements-gemma.txt              Optional Gemma Transformers + bitsandbytes
+requirements-gemini.txt             Optional Google GenAI SDK
 notebooks/VeriFile_HackDay_Colab.ipynb  Interactive Google Colab notebook
 demo/create_samples.py              Generates 5 synthetic test fixtures
 demo/TEST DATA/                     Real test sample pair (Original vs Fake Rp60.000)
-tests/                              Automated unit & security regression test suite (34 tests)
+demo/TEST FK/                       Additional test fixtures
+tests/                              Automated unit & security regression test suite (48 tests)
 docs/ETHICS.md                      Responsible disclosure & privacy guidelines
 docs/EXPERIMENTAL_BACKENDS.md       External backends (PhotoHolmes, RapidOCR)
 docs/ROADMAP.md                     Milestones, evaluation metrics, and future scope
