@@ -53,14 +53,18 @@ python app.py
    - **Ringkasan Data Struk:** Bank/e-wallet, nominal header, rincian nominal, total, status konsistensi nominal, tanggal/waktu, No. Ref, penerima, dan pengirim.
    - **Tab Diagnostik:** ROI Area Nominal, ELA, Kontur Layar, dan Ekspor Laporan JSON.
 
-### CLI Usage
+### CLI Usage (Single File & Batch Export ke `.pdf`, `.xlsx`, `.csv`, `.json`)
 
 ```bash
-# Analyze a file and export JSON report
+# Single file JSON report
 python -m verifile.cli demo/edited_overlay_sample.pdf --output report.json
 
 # Optional deep metadata scan using ExifTool (if installed)
 python -m verifile.cli demo/clean_sample.jpg --exiftool --output report.json
+
+# Batch analyze a whole folder of images/PDFs -> generate visual PDF or Excel (.xlsx) report
+python -m verifile.cli "demo/TEST DATA" --ai --output batch_report.pdf
+python -m verifile.cli demo/clean_sample.jpg demo/edited_sample.jpg --output batch_report.xlsx
 ```
 
 ---

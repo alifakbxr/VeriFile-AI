@@ -81,12 +81,12 @@ def test_falls_back_to_gemini_api_when_local_gemma_fails(monkeypatch):
     assert '**********1234' in captured['user_prompt']
 
 
-def test_raises_original_error_when_no_gemini_api_key_set(monkeypatch):
+def test_raises_original_error_when_no_gemini_api_key_set(monkeypatch, tmp_path):
     monkeypatch.delenv('GEMINI_API_KEY', raising=False)
     monkeypatch.delenv('GOOGLE_API_KEY', raising=False)
     report, pages = _sample_report_and_image()
 
-    reviewer = Gemma4Reviewer()
+    reviewer = Gemma4Reviewer(dotenv_path=tmp_path / 'nonexistent.env')
 
     def broken_load():
         raise RuntimeError('CUDA GPU tidak tersedia.')
