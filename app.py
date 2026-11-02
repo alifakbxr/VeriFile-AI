@@ -40,6 +40,7 @@ def _cleanup_old_reports(max_age_seconds: int = 1800, max_files: int = 50) -> No
         pass
 
 
+
 def _generate_multi_overview(reports: list[dict]) -> str:
     if not reports or len(reports) <= 1:
         return ""
@@ -403,7 +404,7 @@ def build_app():
                     clear_btn = gr.ClearButton(components=[inp], value="Hapus File")
 
                 with gr.Accordion("⚙️ Opsi Tambahan (Gemma Multimodal / ExifTool)", open=False):
-                    gemma_check = gr.Checkbox(value=False, label="Gemma 4 Multimodal Verification (opsional, butuh GPU)")
+                    gemma_check = gr.Checkbox(value=False, label="Jalankan AI multimodal (Gemma 4 lokal GPU; otomatis fallback ke Gemini API bila GEMINI_API_KEY diset)")
                     deep_check = gr.Checkbox(value=False, label="Deep Scan ExifTool (opsional, jika terpasang)")
 
             with gr.Column(scale=7):

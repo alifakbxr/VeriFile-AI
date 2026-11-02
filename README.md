@@ -77,6 +77,14 @@ Open [`notebooks/VeriFile_HackDay_Colab.ipynb`](https://colab.research.google.co
    - Set `ENABLE_GEMMA = True` in the Gemma cell and execute.
 4. **Step 4:** Launch the interactive Gradio interface directly within Colab.
 
+For optional **Gemini API fallback** (when Colab GPU is unavailable or local Gemma fails):
+
+1. Create a Gemini API key in Google AI Studio and save it under Colab **Secrets → `GEMINI_API_KEY`** (or in a local `.env` file copied from `.env.example`).
+2. Run Step 3 in `notebooks/VeriFile_HackDay_Colab.ipynb` (or locally `pip install -r requirements-gemini.txt`, though stdlib HTTPS also works without extra packages).
+3. When the AI checkbox is enabled in Gradio, `verifile/gemma.py` tries local Gemma 4 first and automatically falls back to `gemini-2.5-flash` (`status: "completed_gemini_fallback"`), sending the redacted JSON summary and images over HTTPS to Google's Gemini API. Set `GEMINI_ONLY=1` to skip local Gemma entirely.
+
+**Disk requirement:** Standard Gemma 4 E2B weight files may exceed 10 GB, *plus* cache/dependencies. The 5–10 GB space mentioned in the event checklist is **not enough** for a guaranteed local Gemma setup. Prefer Colab with sufficient available storage.
+
 ---
 
 ## 3. Security & Privacy Hardening
