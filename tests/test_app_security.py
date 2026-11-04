@@ -2,7 +2,7 @@ import os
 import time
 from pathlib import Path
 
-from app import REPORTS_DIR, _cleanup_old_reports
+from app import REPORTS_DIR, _cleanup_old_reports, _format_verdict_card, _generate_multi_overview
 
 
 def test_reports_dir_is_restricted():
@@ -19,4 +19,37 @@ def test_cleanup_old_reports():
 
     _cleanup_old_reports(max_age_seconds=60)
     assert not test_file.exists()
+
+
+def test_xss_prevention_in_verdict_card_and_overview():
+    import html
+    payload = "<script>alert('xss')</script>"
+    fake_report = {
+        'file': {'name': payload, 'type_detected': 'png', 'bytes': 100, 'sha256': 'abc'},
+        'verdict_title': payload,
+        'verdict_category': 'MANIPULASI_TERDETEKSI',
+        'risk_level': 'TINGGI',
+        'forensics': {'summary': payload, 'findings': []},
+        'receipt_data': {
+            'is_receipt': True,
+            'bank': payload,
+            'transaction_status': payload,
+            'amounts': {'header': payload, 'nominal': payload, 'total': payload},
+            'date_time': payload,
+            'ref_id': payload,
+            'recipient': payload,
+            'sender': payload,
+            'internal_consistency': {'is_consistent': False, 'reason': payload},
+        }
+    }
+
+    card_html = _format_verdict_card(fake_report)
+    assert "<script>" not in card_html
+    assert html.escape(payload) in card_html
+
+    overview_html = _generate_multi_overview([fake_report, fake_report])
+    assert "<script>" not in overview_html
+    assert html.escape(payload) in overview_html
+
+
 

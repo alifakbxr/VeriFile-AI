@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .overlay import _redact
+
 BANK_PATTERNS = [
     (r"wondr\s+by\s+BNI", "wondr by BNI"),
     (r"\bBNI\b|Bank\s+Negara\s+Indonesia", "Bank BNI"),
@@ -125,9 +127,9 @@ def parse_receipt_data(ocr_lines: list[dict]) -> dict[str, Any]:
                 k in raw_texts[i + 2].lower() for k in ["sumber", "rekening", "detail", "nominal", "total"]
             ):
                 rec_line += " " + raw_texts[i + 2]
-            recipient = rec_line
+            recipient = _redact(rec_line)
         if re.search(r"sumber\s*dana|pengirim\b", line, re.I) and i + 1 < len(raw_texts):
-            sender = raw_texts[i + 1]
+            sender = _redact(raw_texts[i + 1])
 
     # 6. Amounts (Header, Nominal, Total, Admin Fee)
     amounts: dict[str, Any] = {}

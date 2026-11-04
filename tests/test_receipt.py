@@ -78,3 +78,22 @@ def test_empty_lines():
     assert res["status"] == "no_ocr_data"
     assert res["is_receipt"] is False
 
+
+def test_parse_receipt_pii_account_masked():
+    lines = [
+        {"text": "Bank Mandiri"},
+        {"text": "Transfer Berhasil"},
+        {"text": "Rp100.000"},
+        {"text": "Penerima"},
+        {"text": "BUDI SANTOSO 1234567890123"},
+        {"text": "Sumber dana"},
+        {"text": "SITI AMINAH 987654321098"},
+    ]
+    res = parse_receipt_data(lines)
+    assert res["is_receipt"] is True
+    assert "1234567890123" not in res["recipient"]
+    assert "987654321098" not in res["sender"]
+    assert "BUDI SANTOSO *********0123" in res["recipient"]
+    assert "SITI AMINAH ********1098" in res["sender"]
+
+

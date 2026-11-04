@@ -1,4 +1,5 @@
 """Gradio browser demo; all uploaded bytes processed on the running Python host."""
+import html
 import json
 import os
 import tempfile
@@ -97,13 +98,13 @@ def _generate_multi_overview(reports: list[dict]) -> str:
                 <tbody>
     """
     for r in reports:
-        name = r.get('file', {}).get('name', 'file')
+        name = html.escape(str(r.get('file', {}).get('name', 'file')))
         receipt = r.get('receipt_data', {})
-        bank = receipt.get('bank', '-') if receipt else '-'
-        amt = receipt.get('amounts', {}).get('header', '-') if receipt else '-'
+        bank = html.escape(str(receipt.get('bank', '-') if receipt else '-'))
+        amt = html.escape(str(receipt.get('amounts', {}).get('header', '-') if receipt else '-'))
         cat = r.get('verdict_category', '')
-        title = r.get('verdict_title', '')
-        risk = r.get('risk_level', '')
+        title = html.escape(str(r.get('verdict_title', '')))
+        risk = html.escape(str(r.get('risk_level', '')))
 
         if cat == 'MANIPULASI_TERDETEKSI':
             color = '#dc2626'
@@ -134,9 +135,9 @@ def _generate_multi_overview(reports: list[dict]) -> str:
 
 def _format_verdict_card(report: dict) -> str:
     category = report.get('verdict_category', 'TIDAK_TERDETEKSI_ANOMALI')
-    title = report.get('verdict_title', 'Hasil Pemeriksaan')
-    risk = report.get('risk_level', 'RENDAH')
-    summary = report.get('forensics', {}).get('summary', '')
+    title = html.escape(str(report.get('verdict_title', 'Hasil Pemeriksaan')))
+    risk = html.escape(str(report.get('risk_level', 'RENDAH')))
+    summary = html.escape(str(report.get('forensics', {}).get('summary', '')))
     receipt = report.get('receipt_data', {})
 
     if category == 'MANIPULASI_TERDETEKSI':
@@ -171,21 +172,22 @@ def _format_verdict_card(report: dict) -> str:
     """
 
     if receipt and receipt.get('is_receipt'):
-        bank = receipt.get('bank', '-')
-        status_tx = receipt.get('transaction_status', '-')
+        bank = html.escape(str(receipt.get('bank', '-')))
+        status_tx = html.escape(str(receipt.get('transaction_status', '-')))
         amounts = receipt.get('amounts', {})
-        header_amt = amounts.get('header', '-')
-        nominal_amt = amounts.get('nominal', '-')
-        total_amt = amounts.get('total', '-')
-        dt = receipt.get('date_time', '-')
-        ref = receipt.get('ref_id', '-')
-        penerima = receipt.get('recipient', '-')
-        pengirim = receipt.get('sender', '-')
+        header_amt = html.escape(str(amounts.get('header', '-')))
+        nominal_amt = html.escape(str(amounts.get('nominal', '-')))
+        total_amt = html.escape(str(amounts.get('total', '-')))
+        dt = html.escape(str(receipt.get('date_time', '-')))
+        ref = html.escape(str(receipt.get('ref_id', '-')))
+        penerima = html.escape(str(receipt.get('recipient', '-')))
+        pengirim = html.escape(str(receipt.get('sender', '-')))
         consistency = receipt.get('internal_consistency', {})
+        reason_escaped = html.escape(str(consistency.get('reason', '')))
         cons_status = (
             "<span style='color: #15803d; font-weight: 700;'>✅ Konsisten</span>"
             if consistency.get('is_consistent')
-            else f"<span style='color: #b91c1c; font-weight: 700;'>🚨 Tidak Konsisten ({consistency.get('reason', '')})</span>"
+            else f"<span style='color: #b91c1c; font-weight: 700;'>🚨 Tidak Konsisten ({reason_escaped})</span>"
         )
 
         receipt_html = f"""
@@ -336,7 +338,9 @@ def analyze_multi_ui(files=None, use_gemma=False, use_exiftool=False):
 
     active = items_data[default_key]
     if 'error' in active:
-        card_html = f"<div style='background-color:#fee2e2; border:2px solid #ef4444; border-radius:12px; padding:18px; color:#991b1b;'><h3>Gagal: {default_key}</h3><p>{active['error']}</p></div>"
+        err_msg = html.escape(str(active['error']))
+        key_escaped = html.escape(str(default_key))
+        card_html = f"<div style='background-color:#fee2e2; border:2px solid #ef4444; border-radius:12px; padding:18px; color:#991b1b;'><h3>Gagal: {key_escaped}</h3><p>{err_msg}</p></div>"
         details_md = f"**Error:** {active['error']}"
         active_json = {}
         active_file = None
@@ -368,7 +372,9 @@ def on_select_file(selected_name, state_data):
         return "", "", None, None, None, {}, None
     active = state_data[selected_name]
     if 'error' in active:
-        card_html = f"<div style='background-color:#fee2e2; border:2px solid #ef4444; border-radius:12px; padding:18px; color:#991b1b;'><h3>Gagal: {selected_name}</h3><p>{active['error']}</p></div>"
+        err_msg = html.escape(str(active['error']))
+        key_escaped = html.escape(str(selected_name))
+        card_html = f"<div style='background-color:#fee2e2; border:2px solid #ef4444; border-radius:12px; padding:18px; color:#991b1b;'><h3>Gagal: {key_escaped}</h3><p>{err_msg}</p></div>"
         return card_html, f"**Error:** {active['error']}", None, None, None, {}, None
 
     card_html = _format_verdict_card(active['report'])
